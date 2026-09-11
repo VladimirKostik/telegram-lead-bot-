@@ -8,6 +8,11 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
+from ..database.database import get_session
+from ..database.repositories import (
+    create_application,
+    get_or_create_user,
+)
 from ..keyboards.application import confirmation_keyboard
 from ..keyboards.main import main_keyboard
 from ..states.application import ApplicationForm
@@ -46,7 +51,6 @@ async def process_name(
         return
 
     await state.update_data(name=name)
-
     await state.set_state(ApplicationForm.phone)
 
     await message.answer(
@@ -72,7 +76,6 @@ async def process_phone(
         return
 
     await state.update_data(phone=phone)
-
     await state.set_state(ApplicationForm.service)
 
     await message.answer(
@@ -94,7 +97,6 @@ async def process_service(
         return
 
     await state.update_data(service=service)
-
     await state.set_state(ApplicationForm.comment)
 
     await message.answer(
@@ -138,14 +140,49 @@ async def confirm_application(
 ):
     data = await state.get_data()
 
+    print("\n" + "=" * 60)
+    print("START DATABASE SAVE")
+    print("Telegram ID:", callback.from_user.id)
+    print("Username:", callback.from_user.username)
+    print("First name:", callback.from_user.first_name)
+    print("Application data:", data)
+    print("=" * 60)
+
+    async with get_session() as session:
+        print("SESSION CREATED")
+
+        user = await get_or_create_user(
+            session=session,
+            telegram_id=callback.from_user.id,
+            username=callback.from_user.username,
+            first_name=callback.from_user.first_name,
+        )
+
+        print("USER OK:", user.id)
+
+        application = await create_application(
+            session=session,
+            user=user,
+            name=data["name"],
+            phone=data["phone"],
+            service=data["service"],
+            comment=data["comment"],
+        )
+
+        print("APPLICATION CREATED:", application.id)
+
+        await session.commit()
+
+        print("COMMIT OK")
+
     await callback.message.edit_text(
         "✅ Заявку підтверджено!\n\n"
-        f"👤 Ім'я: {data['name']}\n"
-        f"📞 Телефон: {data['phone']}\n"
-        f"🔧 Послуга: {data['service']}\n"
-        f"💬 Коментар: {data['comment']}\n\n"
-        "Збереження в базу даних буде додано "
-        "на наступному етапі."
+        f"🆔 Номер заявки: #{application.id}\n"
+        f"👤 Ім'я: {application.name}\n"
+        f"📞 Телефон: {application.phone}\n"
+        f"🔧 Послуга: {application.service}\n"
+        f"💬 Коментар: {application.comment}\n\n"
+        "Заявку успішно збережено."
     )
 
     await state.clear()
@@ -186,6 +223,7 @@ async def edit_application(
     callback: CallbackQuery,
     state: FSMContext,
 ):
+    await state.clear()
     await state.set_state(ApplicationForm.name)
 
     await callback.message.edit_text(
