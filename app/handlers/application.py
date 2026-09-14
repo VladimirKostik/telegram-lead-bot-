@@ -1,6 +1,6 @@
 import re
 
-from aiogram import Router
+from aiogram import Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
@@ -17,6 +17,7 @@ from ..database.repositories import (
 )
 from ..keyboards.application import confirmation_keyboard
 from ..keyboards.main import main_keyboard
+from ..services.notifications import notify_admins
 from ..states.application import ApplicationForm
 
 
@@ -143,6 +144,7 @@ async def process_comment(
 async def confirm_application(
     callback: CallbackQuery,
     state: FSMContext,
+    bot: Bot,
 ):
     data = await state.get_data()
 
@@ -183,6 +185,11 @@ async def confirm_application(
             reply_markup=main_keyboard(
                 is_admin=is_admin(callback.from_user.id)
             ),
+        )
+
+        await notify_admins(
+            bot=bot,
+            application=application,
         )
 
     except Exception as error:

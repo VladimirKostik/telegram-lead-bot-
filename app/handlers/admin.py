@@ -1,19 +1,21 @@
-from aiogram import Router
+from aiogram import Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from ..config import ADMIN_IDS
 from ..database.database import get_session
 from ..database.repositories import (
-    get_new_applications,
+    get_application_by_public_number,
+    get_application_owner_telegram_id,
+    get_applications_by_status,
     update_application_status_by_public_number,
 )
-from ..keyboards.admin import admin_application_keyboard
-from ..keyboards.main import main_keyboard
-from ..security import (
-    can_modify_application,
-    is_admin,
+from ..keyboards.admin import (
+    admin_application_keyboard,
+    admin_menu_keyboard,
 )
+from ..keyboards.main import main_keyboard
+from ..security import can_modify_application, is_admin
+from ..services.notifications import notify_user_status_changed
 
 
 router = Router()
@@ -27,6 +29,77 @@ STATUS_LABELS = {
 }
 
 
+STATUS_TITLES = {
+    "NEW": "📥 Нові заявки",
+    "IN_PROGRESS": "🟡 Заявки в роботі",
+    "DONE": "🟢 Виконані заявки",
+    "CANCELLED": "🔴 Скасовані заявки",
+}
+
+
+def application_text(application) -> str:
+    return (
+        f"📨 <b>Заявка</b>\n\n"
+        f"🆔 #{application.public_number}\n"
+        f"👤 Ім'я: {application.name}\n"
+        f"📞 Телефон: {application.phone}\n"
+        f"🔧 Послуга: {application.service}\n"
+        f"💬 Коментар: {application.comment or '-'}\n"
+        f"📌 Статус: "
+        f"{STATUS_LABELS.get(application.status, application.status)}\n"
+        f"🕐 {application.created_at.strftime('%d.%m.%Y %H:%M')}"
+    )
+
+
+async def show_applications_by_status(
+    message: Message,
+    state: FSMContext,
+    status: str,
+) -> None:
+    if not is_admin(message.from_user.id):
+        await message.answer(
+            "⛔ У вас немає доступу до адміністративної панелі.",
+            reply_markup=main_keyboard(is_admin=False),
+        )
+        return
+
+    await state.clear()
+
+    async with get_session() as session:
+        applications = await get_applications_by_status(
+            session=session,
+            status=status,
+        )
+
+    title = STATUS_TITLES.get(
+        status,
+        "📋 Заявки",
+    )
+
+    if not applications:
+        await message.answer(
+            f"{title}\n\n"
+            "Заявок у цьому статусі немає.",
+            reply_markup=admin_menu_keyboard(),
+        )
+        return
+
+    await message.answer(
+        f"{title}: {len(applications)}",
+        reply_markup=admin_menu_keyboard(),
+    )
+
+    for application in applications:
+        await message.answer(
+            application_text(application),
+            reply_markup=admin_application_keyboard(
+                public_number=application.public_number,
+                status=application.status,
+            ),
+            parse_mode="HTML",
+        )
+
+
 @router.message(
     lambda message: message.text == "📥 Нові заявки"
 )
@@ -34,64 +107,80 @@ async def show_new_applications(
     message: Message,
     state: FSMContext,
 ):
-    if not is_admin(message.from_user.id):
-        await message.answer(
-            "⛔ У вас немає доступу до "
-            "адміністративної панелі.",
-            reply_markup=main_keyboard(
-                is_admin=False
-            ),
-        )
-        return
-
-    await state.clear()
-
-    async with get_session() as session:
-        applications = await get_new_applications(
-            session=session,
-        )
-
-    if not applications:
-        await message.answer(
-            "📥 Нових заявок немає.",
-            reply_markup=main_keyboard(
-                is_admin=True
-            ),
-        )
-        return
-
-    await message.answer(
-        f"📥 Нові заявки: {len(applications)}"
+    await show_applications_by_status(
+        message=message,
+        state=state,
+        status="NEW",
     )
 
-    for application in applications:
-        await message.answer(
-            "📨 Нова заявка\n\n"
-            f"🆔 #{application.public_number}\n"
-            f"👤 Ім'я: {application.name}\n"
-            f"📞 Телефон: {application.phone}\n"
-            f"🔧 Послуга: {application.service}\n"
-            f"💬 Коментар: "
-            f"{application.comment or '-'}\n"
-            f"📌 Статус: "
-            f"{STATUS_LABELS.get(application.status, application.status)}\n"
-            f"🕐 "
-            f"{application.created_at.strftime('%d.%m.%Y %H:%M')}",
-            reply_markup=admin_application_keyboard(
-                public_number=application.public_number,
-                status=application.status,
-            ),
-        )
+
+@router.message(
+    lambda message: message.text == "🟡 В роботі"
+)
+async def show_in_progress_applications(
+    message: Message,
+    state: FSMContext,
+):
+    await show_applications_by_status(
+        message=message,
+        state=state,
+        status="IN_PROGRESS",
+    )
+
+
+@router.message(
+    lambda message: message.text == "🟢 Виконані"
+)
+async def show_done_applications(
+    message: Message,
+    state: FSMContext,
+):
+    await show_applications_by_status(
+        message=message,
+        state=state,
+        status="DONE",
+    )
+
+
+@router.message(
+    lambda message: message.text == "🔴 Скасовані"
+)
+async def show_cancelled_applications(
+    message: Message,
+    state: FSMContext,
+):
+    await show_applications_by_status(
+        message=message,
+        state=state,
+        status="CANCELLED",
+    )
+
+
+@router.message(
+    lambda message: message.text == "🏠 Головне меню"
+)
+async def return_to_main_menu(
+    message: Message,
+    state: FSMContext,
+):
+    await state.clear()
+
+    await message.answer(
+        "Повертаю вас до головного меню:",
+        reply_markup=main_keyboard(
+            is_admin=is_admin(message.from_user.id)
+        ),
+    )
 
 
 @router.callback_query(
-    lambda callback: (
+    lambda callback:
         callback.data is not None
         and callback.data.startswith("admin_")
-    )
 )
 async def process_admin_action(
     callback: CallbackQuery,
+    bot: Bot,
 ):
     if not is_admin(callback.from_user.id):
         await callback.answer(
@@ -108,13 +197,12 @@ async def process_admin_action(
         return
 
     try:
-        action, public_number_text = (
-            callback.data.rsplit(":", 1)
+        action, public_number_text = callback.data.rsplit(
+            ":",
+            1,
         )
 
-        public_number = int(
-            public_number_text
-        )
+        public_number = int(public_number_text)
 
     except ValueError:
         await callback.answer(
@@ -138,19 +226,15 @@ async def process_admin_action(
         )
         return
 
+    owner_telegram_id: int | None = None
+
     async with get_session() as session:
         application = None
 
         try:
-            from ..database.repositories import (
-                get_application_by_public_number,
-            )
-
-            application = (
-                await get_application_by_public_number(
-                    session=session,
-                    public_number=public_number,
-                )
+            application = await get_application_by_public_number(
+                session=session,
+                public_number=public_number,
             )
 
             if application is None:
@@ -171,6 +255,13 @@ async def process_admin_action(
                 )
                 return
 
+            owner_telegram_id = (
+                await get_application_owner_telegram_id(
+                    session=session,
+                    public_number=public_number,
+                )
+            )
+
             application = (
                 await update_application_status_by_public_number(
                     session=session,
@@ -188,6 +279,7 @@ async def process_admin_action(
                 str(error),
                 show_alert=True,
             )
+
             return
 
         except Exception as error:
@@ -203,7 +295,15 @@ async def process_admin_action(
                 "❌ Не вдалося змінити статус.",
                 show_alert=True,
             )
+
             return
+
+    if application is None:
+        await callback.answer(
+            "❌ Заявку не знайдено.",
+            show_alert=True,
+        )
+        return
 
     status_label = STATUS_LABELS.get(
         application.status,
@@ -211,15 +311,22 @@ async def process_admin_action(
     )
 
     await callback.message.edit_text(
-        "✅ Статус заявки змінено.\n\n"
+        "✅ <b>Статус заявки змінено.</b>\n\n"
         f"🆔 #{application.public_number}\n"
         f"👤 Ім'я: {application.name}\n"
         f"📞 Телефон: {application.phone}\n"
         f"🔧 Послуга: {application.service}\n"
-        f"💬 Коментар: "
-        f"{application.comment or '-'}\n"
-        f"📌 Статус: {status_label}"
+        f"💬 Коментар: {application.comment or '-'}\n"
+        f"📌 Статус: {status_label}",
+        parse_mode="HTML",
     )
+
+    if owner_telegram_id is not None:
+        await notify_user_status_changed(
+            bot=bot,
+            telegram_id=owner_telegram_id,
+            application=application,
+        )
 
     await callback.answer(
         f"Статус: {status_label}"

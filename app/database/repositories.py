@@ -14,9 +14,7 @@ async def get_or_create_user(
     first_name: str | None,
 ) -> User:
     result = await session.execute(
-        select(User).where(
-            User.telegram_id == telegram_id
-        )
+        select(User).where(User.telegram_id == telegram_id)
     )
 
     user = result.scalar_one_or_none()
@@ -31,15 +29,12 @@ async def get_or_create_user(
     )
 
     session.add(user)
-
     await session.flush()
 
     return user
 
 
-async def generate_public_number(
-    session: AsyncSession,
-) -> int:
+async def generate_public_number(session: AsyncSession) -> int:
     while True:
         public_number = secrets.randbelow(900000) + 100000
 
@@ -74,7 +69,6 @@ async def create_application(
     )
 
     session.add(application)
-
     await session.flush()
 
     return application
@@ -87,12 +81,21 @@ async def get_user_applications(
     result = await session.execute(
         select(Application)
         .join(User)
-        .where(
-            User.telegram_id == telegram_id
-        )
-        .order_by(
-            Application.created_at.desc()
-        )
+        .where(User.telegram_id == telegram_id)
+        .order_by(Application.created_at.desc())
+    )
+
+    return list(result.scalars().all())
+
+
+async def get_applications_by_status(
+    session: AsyncSession,
+    status: str,
+) -> list[Application]:
+    result = await session.execute(
+        select(Application)
+        .where(Application.status == status)
+        .order_by(Application.created_at.asc())
     )
 
     return list(result.scalars().all())
@@ -101,17 +104,37 @@ async def get_user_applications(
 async def get_new_applications(
     session: AsyncSession,
 ) -> list[Application]:
-    result = await session.execute(
-        select(Application)
-        .where(
-            Application.status == "NEW"
-        )
-        .order_by(
-            Application.created_at.asc()
-        )
+    return await get_applications_by_status(
+        session=session,
+        status="NEW",
     )
 
-    return list(result.scalars().all())
+
+async def get_in_progress_applications(
+    session: AsyncSession,
+) -> list[Application]:
+    return await get_applications_by_status(
+        session=session,
+        status="IN_PROGRESS",
+    )
+
+
+async def get_done_applications(
+    session: AsyncSession,
+) -> list[Application]:
+    return await get_applications_by_status(
+        session=session,
+        status="DONE",
+    )
+
+
+async def get_cancelled_applications(
+    session: AsyncSession,
+) -> list[Application]:
+    return await get_applications_by_status(
+        session=session,
+        status="CANCELLED",
+    )
 
 
 async def get_application_by_id(
@@ -151,6 +174,24 @@ async def get_user_application_by_public_number(
         .where(
             User.telegram_id == telegram_id,
             Application.public_number == public_number,
+        )
+    )
+
+    return result.scalar_one_or_none()
+
+
+async def get_application_owner_telegram_id(
+    session: AsyncSession,
+    public_number: int,
+) -> int | None:
+    result = await session.execute(
+        select(User.telegram_id)
+        .join(
+            Application,
+            Application.user_id == User.id,
+        )
+        .where(
+            Application.public_number == public_number
         )
     )
 
