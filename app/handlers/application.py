@@ -8,10 +8,12 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
+from ..config import ADMIN_IDS
 from ..database.database import get_session
 from ..database.repositories import (
     create_application,
     get_or_create_user,
+    get_user_applications,
 )
 from ..keyboards.application import confirmation_keyboard
 from ..keyboards.main import main_keyboard
@@ -19,6 +21,10 @@ from ..states.application import ApplicationForm
 
 
 router = Router()
+
+
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMIN_IDS
 
 
 @router.message(
@@ -140,57 +146,56 @@ async def confirm_application(
 ):
     data = await state.get_data()
 
-    print("\n" + "=" * 60)
-    print("START DATABASE SAVE")
-    print("Telegram ID:", callback.from_user.id)
-    print("Username:", callback.from_user.username)
-    print("First name:", callback.from_user.first_name)
-    print("Application data:", data)
-    print("=" * 60)
+    try:
+        async with get_session() as session:
+            user = await get_or_create_user(
+                session=session,
+                telegram_id=callback.from_user.id,
+                username=callback.from_user.username,
+                first_name=callback.from_user.first_name,
+            )
 
-    async with get_session() as session:
-        print("SESSION CREATED")
+            application = await create_application(
+                session=session,
+                user=user,
+                name=data["name"],
+                phone=data["phone"],
+                service=data["service"],
+                comment=data["comment"],
+            )
 
-        user = await get_or_create_user(
-            session=session,
-            telegram_id=callback.from_user.id,
-            username=callback.from_user.username,
-            first_name=callback.from_user.first_name,
+            await session.commit()
+
+        await callback.message.edit_text(
+            "✅ Заявку підтверджено!\n\n"
+            f"🆔 Номер заявки: #{application.public_number}\n"
+            f"👤 Ім'я: {application.name}\n"
+            f"📞 Телефон: {application.phone}\n"
+            f"🔧 Послуга: {application.service}\n"
+            f"💬 Коментар: {application.comment}\n\n"
+            "Заявку успішно збережено."
         )
 
-        print("USER OK:", user.id)
+        await state.clear()
 
-        application = await create_application(
-            session=session,
-            user=user,
-            name=data["name"],
-            phone=data["phone"],
-            service=data["service"],
-            comment=data["comment"],
+        await callback.message.answer(
+            "Повертаю вас до головного меню:",
+            reply_markup=main_keyboard(
+                is_admin=is_admin(callback.from_user.id)
+            ),
         )
 
-        print("APPLICATION CREATED:", application.id)
+    except Exception as error:
+        print("\n" + "=" * 60)
+        print("DATABASE ERROR")
+        print(f"Error type: {type(error).__name__}")
+        print(f"Error message: {error}")
+        print("=" * 60)
 
-        await session.commit()
-
-        print("COMMIT OK")
-
-    await callback.message.edit_text(
-        "✅ Заявку підтверджено!\n\n"
-        f"🆔 Номер заявки: #{application.id}\n"
-        f"👤 Ім'я: {application.name}\n"
-        f"📞 Телефон: {application.phone}\n"
-        f"🔧 Послуга: {application.service}\n"
-        f"💬 Коментар: {application.comment}\n\n"
-        "Заявку успішно збережено."
-    )
-
-    await state.clear()
-
-    await callback.message.answer(
-        "Повертаю вас до головного меню:",
-        reply_markup=main_keyboard,
-    )
+        await callback.message.edit_text(
+            "❌ Не вдалося зберегти заявку.\n\n"
+            "Спробуйте ще раз."
+        )
 
     await callback.answer()
 
@@ -210,7 +215,9 @@ async def cancel_application(
 
     await callback.message.answer(
         "Повертаю вас до головного меню:",
-        reply_markup=main_keyboard,
+        reply_markup=main_keyboard(
+            is_admin=is_admin(callback.from_user.id)
+        ),
     )
 
     await callback.answer()
@@ -232,3 +239,62 @@ async def edit_application(
     )
 
     await callback.answer()
+
+
+@router.message(
+    lambda message: message.text == "📋 Мої заявки"
+)
+async def show_my_applications(
+    message: Message,
+):
+    try:
+        async with get_session() as session:
+            applications = await get_user_applications(
+                session=session,
+                telegram_id=message.from_user.id,
+            )
+
+        if not applications:
+            await message.answer(
+                "📋 У вас поки немає заявок.",
+                reply_markup=main_keyboard(
+                    is_admin=is_admin(message.from_user.id)
+                ),
+            )
+            return
+
+        lines = ["📋 Ваші заявки:\n"]
+
+        for application in applications:
+            created_at = application.created_at.strftime(
+                "%d.%m.%Y %H:%M"
+            )
+
+            lines.append(
+                f"🆔 #{application.public_number}\n"
+                f"🔧 Послуга: {application.service}\n"
+                f"📌 Статус: {application.status}\n"
+                f"💬 Коментар: {application.comment or '-'}\n"
+                f"🕐 {created_at}\n"
+            )
+
+        await message.answer(
+            "\n".join(lines),
+            reply_markup=main_keyboard(
+                is_admin=is_admin(message.from_user.id)
+            ),
+        )
+
+    except Exception as error:
+        print("\n" + "=" * 60)
+        print("APPLICATIONS READ ERROR")
+        print(f"Error type: {type(error).__name__}")
+        print(f"Error message: {error}")
+        print("=" * 60)
+
+        await message.answer(
+            "❌ Не вдалося отримати ваші заявки.",
+            reply_markup=main_keyboard(
+                is_admin=is_admin(message.from_user.id)
+            ),
+        )

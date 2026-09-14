@@ -63,6 +63,13 @@ class Application(Base):
         primary_key=True,
     )
 
+    public_number: Mapped[int] = mapped_column(
+        BigInteger,
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"),
         index=True,

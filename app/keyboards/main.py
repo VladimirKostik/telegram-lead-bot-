@@ -1,8 +1,8 @@
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
 
-main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[
+def main_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
+    rows = [
         [
             KeyboardButton(text="📝 Залишити заявку"),
         ],
@@ -13,6 +13,16 @@ main_keyboard = ReplyKeyboardMarkup(
         [
             KeyboardButton(text="📞 Контакти"),
         ],
-    ],
-    resize_keyboard=True,
-)
+    ]
+
+    if is_admin:
+        rows.append(
+            [
+                KeyboardButton(text="📥 Нові заявки"),
+            ]
+        )
+
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+    )
