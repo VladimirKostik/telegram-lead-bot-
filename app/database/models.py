@@ -1,7 +1,19 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+)
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 
 class Base(DeclarativeBase):
@@ -11,7 +23,9 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
 
     telegram_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -59,14 +73,20 @@ class User(Base):
 class Application(Base):
     __tablename__ = "applications"
 
+    __table_args__ = (
+        Index(
+            "applications_public_number_key",
+            "public_number",
+            unique=True,
+        ),
+    )
+
     id: Mapped[int] = mapped_column(
         primary_key=True,
     )
 
     public_number: Mapped[int] = mapped_column(
         BigInteger,
-        unique=True,
-        index=True,
         nullable=False,
     )
 
