@@ -1,87 +1,66 @@
-Telegram Lead Bot
+# Telegram Lead Bot
 
 Production-ready Telegram bot template for collecting client requests, storing them in PostgreSQL, processing them through an admin workflow, and sending status notifications.
 
-Demo
+## Demo
 
 Telegram bot: https://t.me/VladimirLeadTemplateBot
 
 GitHub repository: https://github.com/VladimirKostik/telegram-lead-bot-
 
-Features
+## Features
 
-Telegram /start entry point
+- Telegram `/start` entry point
+- Application form based on FSM (finite-state machine)
+- User data stored in PostgreSQL
+- Unique public application numbers
+- Separate internal database ID and public application number
+- User view: `📋 Мої заявки`
+- Admin view: `📥 Нові заявки`
+- Application status workflow
+- User notifications when application status changes
+- Admin notifications for new applications
+- Admin authorization by Telegram ID
+- Ownership checks for user application access
+- IDOR protection for application access
+- Automated security and authorization tests
+- Async SQLAlchemy + asyncpg
+- Dockerized application
+- PostgreSQL container for local development
+- Alembic database migrations
+- Railway deployment
+- GitHub-based automatic deployment
 
-Application form based on FSM (finite-state machine)
+## Application Status Workflow
 
-User data stored in PostgreSQL
+Allowed transitions:
 
-Unique public application numbers
-
-Separate internal database ID and public application number
-
-User view: 📋 Мої заявки
-
-Admin view: 📥 Нові заявки
-
-Application status workflow:
-
+```text
 NEW → IN_PROGRESS
-
 NEW → CANCELLED
 
 IN_PROGRESS → DONE
-
 IN_PROGRESS → CANCELLED
 
-Terminal statuses: DONE, CANCELLED
+Terminal statuses:
 
-User notifications when application status changes
+DONE
+CANCELLED
 
-Admin notifications for new applications
-
-Admin authorization by Telegram ID
-
-Ownership checks for user application access
-
-IDOR protection for application access
-
-Automated security and authorization tests
-
-Async SQLAlchemy + asyncpg
-
-Dockerized application
-
-PostgreSQL container for local development
-
-Railway deployment for production
-
-GitHub-based automatic deployment
+No transitions are allowed from terminal statuses.
 
 Tech Stack
-
 Python 3.14
-
 aiogram 3
-
 SQLAlchemy 2
-
 asyncpg
-
 PostgreSQL 16
-
+Alembic
 Docker / Docker Compose
-
 pytest
-
-Alembic — planned migration layer
-
-Railway — production deployment
-
-GitHub — source control and deployment trigger
-
+Railway
+GitHub
 Architecture
-
 Telegram User
      │
      ▼
@@ -100,7 +79,7 @@ SQLAlchemy Async
      ▼
 PostgreSQL
 
-Production:
+Production architecture:
 
 GitHub
    │
@@ -108,9 +87,7 @@ GitHub
 Railway
    ├── Telegram Bot service
    └── PostgreSQL service
-
 Project Structure
-
 telegram-lead-bot-/
 │
 ├── app/
@@ -139,21 +116,27 @@ telegram-lead-bot-/
 │   ├── main.py
 │   └── security.py
 │
+├── alembic/
+│   ├── versions/
+│   │   ├── 1e8d1d635706_initial_database_schema.py
+│   │   └── e0f06859f146_normalize_public_number_index.py
+│   ├── env.py
+│   ├── script.py.mako
+│   └── README
+│
 ├── tests/
 │   └── test_security.py
 │
 ├── .dockerignore
 ├── .env.example
 ├── .gitignore
+├── alembic.ini
 ├── docker-compose.yml
 ├── Dockerfile
 ├── requirements.txt
 └── README.md
-
 Application Workflow
-
 User
-
 /start
    ↓
 Main menu
@@ -175,9 +158,7 @@ Application created
 Public application number
    ↓
 Notification to administrators
-
 Administrator
-
 📥 Нові заявки
    ↓
 NEW
@@ -194,28 +175,21 @@ NEW
    └── 🔴 Скасувати
           ↓
        CANCELLED
-
-DONE and CANCELLED are terminal statuses.
-
 Security
-
-Admin authorization
+Admin Authorization
 
 Administrative actions are restricted to Telegram IDs configured in ADMIN_IDS.
 
 A regular user cannot:
 
-open the admin queue;
-
-change application status;
-
-perform administrative actions through callbacks.
-
-Application ownership
+open the admin queue
+change application status
+perform administrative actions through callbacks
+Application Ownership
 
 A user can access only their own applications.
 
-The application lookup for user-facing actions is performed with both:
+The user-facing application lookup uses both:
 
 telegram_id
 +
@@ -240,7 +214,6 @@ is a separate generated value.
 The public number is not the database primary key and is intended for communication with users.
 
 Database Model
-
 users
 
 Main fields:
@@ -253,7 +226,6 @@ phone
 language
 created_at
 updated_at
-
 applications
 
 Main fields:
@@ -272,7 +244,6 @@ updated_at
 Relationship:
 
 users 1 ─────── N applications
-
 Environment Variables
 
 Create .env locally from .env.example.
@@ -280,31 +251,29 @@ Create .env locally from .env.example.
 Required variables:
 
 BOT_TOKEN=your_telegram_bot_token
-ADMIN_IDS=1234567890
+ADMIN_IDS=123456789
 DATABASE_URL=postgresql+asyncpg://user:password@host:5432/database
 
-For production, environment variables are configured in Railway.
+For production, configure environment variables in Railway.
 
-Never commit .env.
+Never commit:
 
+.env
+Telegram bot tokens
+database passwords
+private credentials
 Local Development
-
 1. Clone the repository
-
 git clone https://github.com/VladimirKostik/telegram-lead-bot-.git
 cd telegram-lead-bot-
-
 2. Create and activate a virtual environment
 
 Windows / Git Bash:
 
 python -m venv .venv
 source .venv/Scripts/activate
-
 3. Install dependencies
-
 pip install -r requirements.txt
-
 4. Configure environment variables
 
 Create:
@@ -314,21 +283,27 @@ Create:
 based on:
 
 .env.example
-
 5. Start PostgreSQL
-
 docker compose up -d db
 
 The local PostgreSQL service is exposed on:
 
 127.0.0.1:5433
 
-while PostgreSQL itself listens on port 5432 inside the container.
+PostgreSQL itself listens on port 5432 inside the container.
 
-6. Run the bot locally
+6. Run database migrations
+alembic upgrade head
 
+Check migration state:
+
+alembic current
+
+Check that the models and database are synchronized:
+
+alembic check
+7. Run the bot locally
 python -m app.main
-
 Docker
 
 Build the image:
@@ -353,42 +328,53 @@ docker compose stop bot
 
 When production is running on Railway, do not run a second long-polling instance with the same Telegram bot token at the same time.
 
+Alembic
+
+Alembic is used for versioned database schema migrations.
+
+Current migration chain:
+
+<base>
+   ↓
+1e8d1d635706
+initial database schema
+   ↓
+e0f06859f146
+normalize public number index
+
+Useful commands:
+
+alembic current
+alembic history
+alembic upgrade head
+alembic downgrade -1
+alembic check
+
+Production uses:
+
+alembic upgrade head
+
+as the Railway pre-deploy command.
+
 Testing
 
-Run the automated tests:
+Run the automated test suite:
 
 python -m pytest -q
 
-Current test baseline:
+Current verified baseline:
 
-18 passed
+58 passed
 
-The current test suite focuses on authorization, status transitions, ownership, and IDOR-related access control.
+The test suite covers:
 
-Status Transition Rules
-
-Allowed:
-
-NEW → IN_PROGRESS
-NEW → CANCELLED
-
-IN_PROGRESS → DONE
-IN_PROGRESS → CANCELLED
-
-Forbidden:
-
-IN_PROGRESS → NEW
-
-DONE → NEW
-DONE → IN_PROGRESS
-DONE → CANCELLED
-
-CANCELLED → NEW
-CANCELLED → IN_PROGRESS
-CANCELLED → DONE
-
-The transition rules are enforced in app/security.py.
-
+administrator authorization
+regular user access restrictions
+allowed status transitions
+forbidden status transitions
+application ownership
+foreign-user access denial
+IDOR-related access control
 Notifications
 
 Notifications are isolated in:
@@ -397,9 +383,15 @@ app/services/notifications.py
 
 Two main flows are supported:
 
-New application → administrators
+New application
+      ↓
+Administrators
 
-Application status changed → application owner
+and:
+
+Application status changed
+      ↓
+Application owner
 
 Notifications are sent only after the corresponding database operation has been successfully committed.
 
@@ -417,27 +409,31 @@ Railway Project
 └── Postgres
     └── PostgreSQL database
 
-The application receives these production variables from Railway:
+Production variables:
 
 BOT_TOKEN
 ADMIN_IDS
 DATABASE_URL
 
-The production PostgreSQL URL is normalized to the async SQLAlchemy driver format:
-
-postgresql+asyncpg://...
-
-The GitHub branch connected to production is:
+The production GitHub branch is:
 
 main
 
-Automatic deployment is enabled, so pushes to the production branch can trigger a new Railway deployment.
+Automatic deployment is enabled.
 
+Railway pre-deploy command:
+
+alembic upgrade head
+
+Application start command:
+
+python -m app.main
 Deployment Flow
-
 Local changes
      ↓
 pytest
+     ↓
+Alembic verification
      ↓
 Docker verification
      ↓
@@ -449,10 +445,9 @@ GitHub
      ↓
 Railway build
      ↓
-Railway deployment
+alembic upgrade head
      ↓
 Production bot
-
 Production Verification
 
 A production smoke test should verify:
@@ -473,6 +468,23 @@ User notification
    ↓
 Application stored in Railway PostgreSQL
 
+Security smoke testing should verify:
+
+Regular user
+   ↓
+No admin menu
+
+User A
+   ↓
+Cannot access User B applications
+
+DONE
+   ↓
+No further status transitions
+
+CANCELLED
+   ↓
+No further status transitions
 Client Customization
 
 This repository is intended to be reused as a client template.
@@ -480,23 +492,14 @@ This repository is intended to be reused as a client template.
 Typical client-specific changes:
 
 bot name and username
-
 company name
-
 contact information
-
 FAQ content
-
 application form fields
-
 service list
-
 administrator Telegram IDs
-
 notification texts
-
 branding and emojis
-
 additional integrations
 
 The core architecture can remain unchanged.
@@ -506,6 +509,10 @@ Development Rules
 Before pushing changes:
 
 python -m pytest -q
+
+Check migration state:
+
+alembic check
 
 Check Git state:
 
@@ -526,25 +533,40 @@ Never commit:
 Telegram bot tokens
 database passwords
 private credentials
+Project Status
 
-Roadmap
+Current template status:
 
-Planned production hardening:
+✅ Telegram application flow
+✅ PostgreSQL persistence
+✅ Admin workflow
+✅ Status transition security
+✅ User notifications
+✅ Admin notifications
+✅ Ownership checks
+✅ IDOR protection
+✅ Automated security tests
+✅ Docker support
+✅ Railway deployment
+✅ GitHub Auto Deploy
+✅ Alembic migrations
+✅ Production smoke testing
+✅ Technical documentation
 
-Alembic database migrations
+Current automated test baseline:
 
-Expanded integration tests
+58 passed
 
-More structured application logging
+Current Alembic head:
 
-Improved error handling
+e0f06859f146
+Release
 
-Final template cleanup
+The stable release is intended to be tagged as:
 
-Release tags and versioning
-
-Additional client integrations when required
-
+v1.0.0
 License
 
-This project is a reusable freelance development template. Add a project-specific license before distributing the source code to third parties.
+This project is a reusable freelance development template.
+
+Add a project-specific license before distributing the source code to third parties.
