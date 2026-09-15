@@ -1,31 +1,20 @@
-import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
+from ..config import DATABASE_URL
 from .models import Base
-
-
-load_dotenv()
-
-
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://lead_bot:lead_bot_password@127.0.0.1:5433/lead_bot",
-)
 
 
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
 )
-
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
